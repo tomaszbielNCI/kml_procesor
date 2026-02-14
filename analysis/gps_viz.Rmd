@@ -591,27 +591,51 @@ ggplot(heat_data, aes(x = hour, y = day, fill = n)) +
 ## 27. Trellis Plot - Altitude by Route
 
 ```{r plot27}
-# Create trellis (facet) plot with proper data
+# Trellis (facet) plot – altitude profiles for top routes (Cedric Scherer style)
+
+# Ensure top_routes is defined (fallback if not already computed)
+if (!exists("top_routes") || length(top_routes) == 0) {
+  top_routes <- gps_data %>%
+    count(track_name, sort = TRUE) %>%
+    slice_head(n = 10) %>%
+    pull(track_name)
+}
+
+# Prepare data – filter, compute time from start, sample up to 200 points per route
 trellis_data <- gps_data %>%
-  filter(!is.na(altitude) & !is.na(time)) %>%
+  filter(!is.na(altitude), !is.na(time), track_name %in% top_routes) %>%
   arrange(track_name, time) %>%
   group_by(track_name) %>%
   mutate(
-    point_index = row_number(),
     time_minutes = as.numeric(difftime(time, min(time, na.rm = TRUE), units = "mins"))
   ) %>%
-  ungroup() %>%
-  filter(track_name %in% top_routes) %>%
-  group_by(track_name) %>%
-  sample_n(min(200, n())) %>%
+  slice_sample(n = min(200, n())) %>%  # take up to 200 points per route (all if fewer)
   ungroup()
 
-ggplot(trellis_data, aes(x = time_minutes, y = altitude)) +
-  geom_line(alpha = 0.7) +
-  facet_wrap(~track_name, scales = "free_y") +
-  labs(title = "Trellis Plot: Altitude Profiles by Route",
-       x = "Time (minutes)", y = "Altitude (m)") +
-  theme_minimal()
+# Plot only if data exists
+if (nrow(trellis_data) > 0) {
+  ggplot(trellis_data, aes(x = time_minutes, y = altitude)) +
+    geom_line(alpha = 0.6, color = "#2c3e50", linewidth = 0.5) +
+    facet_wrap(~track_name, scales = "free_y", ncol = 2) +
+    labs(
+      title = "Altitude profiles by route",
+      subtitle = "Each panel shows a different route (top 10 by number of points)",
+      x = "Time from start (minutes)", y = "Altitude (m)"
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(
+      plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
+      plot.subtitle = element_text(size = 12, hjust = 0.5, color = "gray30"),
+      axis.title = element_text(size = 14),
+      axis.text = element_text(size = 10),
+      strip.text = element_text(size = 12, face = "bold"),
+      panel.grid.minor = element_blank(),
+      panel.spacing = unit(1, "lines"),
+      plot.margin = margin(10, 10, 10, 10)
+    )
+} else {
+  message("No data available for trellis plot – check if top_routes contains valid track names.")
+}
 ```
 
 ---
