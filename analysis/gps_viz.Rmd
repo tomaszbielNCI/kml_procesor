@@ -551,7 +551,8 @@ ggplot(bubble_data, aes(x = distance, y = points, size = calories, color = calor
 stacked_data <- gps_data %>%
   count(track_name, file_type) %>%
   group_by(file_type) %>%
-  slice_max(n = 10) %>%
+  arrange(desc(n)) %>%
+  slice_head(n = 10) %>%
   ungroup() %>%
   mutate(track_name = factor(track_name, levels = unique(track_name)))
 
@@ -569,16 +570,17 @@ ggplot(stacked_data, aes(x = track_name, y = n, fill = file_type)) +
 ## 26. Heat Map - Activity by Hour and Day
 
 ```{r plot26}
-# Create heat map data
+# Create heat map data with proper handling
 heat_data <- gps_data %>%
   filter(!is.na(hour) & !is.na(date)) %>%
   mutate(day = wday(date, label = TRUE, week_start = 1)) %>%
-  count(day, hour) %>%
-  complete(day, hour, fill = 0)
+  count(day, hour, drop_na = FALSE) %>%
+  complete(day, hour, fill = list(n = 0))
 
 ggplot(heat_data, aes(x = hour, y = day, fill = n)) +
   geom_tile() +
   scale_fill_gradient(low = "white", high = "darkred", name = "Points") +
+  scale_x_continuous(breaks = seq(0, 24, 2)) +
   labs(title = "Heat Map: GPS Activity by Hour and Day",
        x = "Hour of Day", y = "Day of Week") +
   theme_minimal()
@@ -591,7 +593,7 @@ ggplot(heat_data, aes(x = hour, y = day, fill = n)) +
 ```{r plot27}
 # Create trellis (facet) plot with proper data
 trellis_data <- gps_data %>%
-  filter(!is.na(altitude)) %>%
+  filter(!is.na(altitude) & !is.na(time)) %>%
   arrange(track_name, time) %>%
   group_by(track_name) %>%
   mutate(
@@ -600,11 +602,12 @@ trellis_data <- gps_data %>%
   ) %>%
   ungroup() %>%
   filter(track_name %in% top_routes) %>%
-  sample_n(1000)  # Sample for clarity
+  group_by(track_name) %>%
+  sample_n(min(200, n())) %>%
+  ungroup()
 
 ggplot(trellis_data, aes(x = time_minutes, y = altitude)) +
   geom_line(alpha = 0.7) +
-  geom_smooth(method = "loess", se = FALSE, color = "red") +
   facet_wrap(~track_name, scales = "free_y") +
   labs(title = "Trellis Plot: Altitude Profiles by Route",
        x = "Time (minutes)", y = "Altitude (m)") +
