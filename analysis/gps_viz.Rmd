@@ -238,15 +238,33 @@ gps_data %>%
 
 ---
 
-## 12. Altitude Statistics by File Types
+## 12. Altitude Statistics 
 
-```{r plot12}
+```{r plot}
+# Altitude distribution – enhanced boxplot + violin + jitter 
+
 ggplot(gps_data, aes(x = file_type, y = altitude, fill = file_type)) +
-  geom_boxplot(alpha = 0.7) +
-  labs(title = "Altitude Distribution by File Types",
-       x = "File Type", y = "Altitude (m above sea level)") +
-  scale_fill_brewer(palette = "Set1") +
-  theme(legend.position = "none")
+  geom_violin(alpha = 0.5, trim = TRUE, show.legend = FALSE) +
+  geom_boxplot(width = 0.2, alpha = 0.8, color = "black", 
+               outlier.shape = NA, show.legend = FALSE) +
+  geom_jitter(width = 0.1, alpha = 0.2, size = 0.8, color = "gray30", show.legend = FALSE) +
+  scale_fill_manual(values = c("gpx" = "#2c7bb6")) + 
+  labs(
+    title = "Altitude distribution",
+    subtitle = "Only GPX files present in the dataset",
+    x = NULL,
+    y = "Altitude (m above sea level)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "gray30"),
+    axis.title.y = element_text(size = 14),
+    axis.text.x = element_text(size = 12, face = "bold"),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90", linewidth = 0.3)
+  )
 ```
 
 ---
@@ -366,41 +384,10 @@ ggplot(time_analysis, aes(x = time_minutes)) +
              color = "red", linetype = "dashed", size = 1)
 ```
 
----
-
-## 19. Calories vs Distance
-
-```{r plot19}
-# Force convert columns to numeric and remove NAs
-route_total_calories <- as.numeric(gps_data$route_total_calories)
-route_distance_km <- as.numeric(gps_data$route_distance_km)
-
-# Create data frame for plotting
-calories_distance_data <- data.frame(
-  calories = route_total_calories[!is.na(route_total_calories) & !is.na(route_distance_km) & route_total_calories > 0],
-  distance = route_distance_km[!is.na(route_total_calories) & !is.na(route_distance_km) & route_distance_km > 0]
-)
-
-# Check data
-cat("Valid data points:", nrow(calories_distance_data), "\n")
-
-if(nrow(calories_distance_data) > 0) {
-  ggplot(calories_distance_data, aes(x = distance, y = calories)) +
-    geom_point(alpha = 0.6, color = "darkred") +
-    geom_smooth(method = "lm", color = "blue", se = TRUE) +
-    labs(title = "Calories vs Distance Relationship",
-         x = "Distance (km)", y = "Calories") +
-    annotate("text", x = Inf, y = -Inf, 
-             label = paste("Correlation:", round(cor(distance, calories, use = "complete.obs"), 2)),
-             hjust = 1.1, vjust = -0.5)
-} else {
-  cat("No valid data for plotting")
-}
-```
 
 ---
 
-## 20. Valleymount to Blessington - Time vs Speed Analysis (Anscombe's Quartet)
+## 19. Valleymount to Blessington - Time vs Speed Analysis (Anscombe's Quartet)
 
 ```{r plot20}
 # Filter Valleymount to Blessington route
@@ -434,7 +421,7 @@ ggplot(valleymount_route, aes(x = time_minutes, y = speed_kmh)) +
 
 ---
 
-## 21. Valleymount to Blessington - Speed Phases Analysis
+## 20. Valleymount to Blessington - Speed Phases Analysis
 
 ```{r plot21}
 # Identify walking vs car phases (75% walking, 25% car)
@@ -461,7 +448,7 @@ ggplot(speed_analysis, aes(x = phase, y = speed_kmh, fill = phase)) +
 
 ---
 
-## 22. Valleymount to Blessington - Speed Timeline with Transition
+## 21. Valleymount to Blessington - Speed Timeline with Transition
 
 ```{r plot22}
 # Create speed timeline with transition point
@@ -481,7 +468,7 @@ ggplot(valleymount_route, aes(x = time_minutes, y = speed_kmh)) +
 
 ---
 
-## 23. Violin Plot of Speed by Route Type
+## 22. Violin Plot of Speed by Route Type
 
 ```{r plot23}
 # Calculate speed for all data first
@@ -547,22 +534,36 @@ ggplot(bubble_data, aes(x = distance, y = points, size = calories, color = calor
 ## 25. Stacked Bar Chart - File Types by Route
 
 ```{r plot25}
-# Create stacked data
+# stacked bar chart – actual point counts by file type (top 10 routes per file type)
 stacked_data <- gps_data %>%
   count(track_name, file_type) %>%
   group_by(file_type) %>%
   arrange(desc(n)) %>%
   slice_head(n = 10) %>%
   ungroup() %>%
-  mutate(track_name = factor(track_name, levels = unique(track_name)))
+  mutate(track_name = fct_reorder(track_name, n, sum, .desc = FALSE))
 
 ggplot(stacked_data, aes(x = track_name, y = n, fill = file_type)) +
-  geom_col(position = "fill") +
+  geom_col(position = "stack", width = 0.7) +
   coord_flip() +
-  labs(title = "Stacked Bar Chart: File Types by Route (Top 10)",
-       x = "Route", y = "Number of Points", fill = "File Type") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
+  scale_fill_viridis_d(option = "plasma", begin = 0.2, end = 0.8) +
+  labs(
+    title = "GPS Points per Route by File Type",
+    subtitle = "Top 10 routes for each file type",
+    x = "", y = "Number of Points", fill = "File Type"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "gray30"),
+    axis.title.x = element_text(size = 14),
+    axis.text.y = element_text(size = 12),
+    legend.position = "bottom",
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank()
+  )
 ```
 
 ---
@@ -570,20 +571,46 @@ ggplot(stacked_data, aes(x = track_name, y = n, fill = file_type)) +
 ## 26. Heat Map - Activity by Hour and Day
 
 ```{r plot26}
-# Create heat map data with proper handling
+# heat map – activity intensity by hour and day of week
 heat_data <- gps_data %>%
   filter(!is.na(hour) & !is.na(date)) %>%
-  mutate(day = wday(date, label = TRUE, week_start = 1)) %>%
-  count(day, hour, drop_na = FALSE) %>%
+  mutate(day = wday(date, label = TRUE, week_start = 1)) %>%  # Monday first
+  count(day, hour, .drop = FALSE) %>%
   complete(day, hour, fill = list(n = 0))
 
 ggplot(heat_data, aes(x = hour, y = day, fill = n)) +
-  geom_tile() +
-  scale_fill_gradient(low = "white", high = "darkred", name = "Points") +
-  scale_x_continuous(breaks = seq(0, 24, 2)) +
-  labs(title = "Heat Map: GPS Activity by Hour and Day",
-       x = "Hour of Day", y = "Day of Week") +
-  theme_minimal()
+  geom_tile(color = "white", linewidth = 0.2) +
+  scale_fill_viridis_c(
+    option = "plasma",
+    direction = -1,
+    name = "Number of\npoints",
+    breaks = scales::pretty_breaks(n = 5)
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, 2),
+    expand = c(0, 0)
+  ) +
+  scale_y_discrete(expand = c(0, 0)) +
+  labs(
+    title = "GPS recording activity",
+    subtitle = "Number of GPS points recorded per hour and day of week",
+    x = "Hour of day", y = NULL
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "gray30"),
+    axis.title.x = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    axis.text.y = element_text(size = 12),
+    panel.grid = element_blank(),
+    legend.position = "bottom",
+    legend.key.width = unit(2, "cm"),
+    legend.key.height = unit(0.4, "cm"),
+    legend.title = element_text(size = 11, vjust = 0.8),
+    legend.text = element_text(size = 10),
+    plot.margin = margin(10, 10, 10, 10)
+  )
 ```
 
 ---
@@ -591,9 +618,9 @@ ggplot(heat_data, aes(x = hour, y = day, fill = n)) +
 ## 27. Trellis Plot - Altitude by Route
 
 ```{r plot27}
-# Trellis (facet) plot – altitude profiles for top routes (Cedric Scherer style)
+# Trellis (facet) plot – altitude profiles for top routes
 
-# Ensure top_routes is defined (fallback if not already computed)
+# Define top 10 routes by number of points 
 if (!exists("top_routes") || length(top_routes) == 0) {
   top_routes <- gps_data %>%
     count(track_name, sort = TRUE) %>%
@@ -601,27 +628,47 @@ if (!exists("top_routes") || length(top_routes) == 0) {
     pull(track_name)
 }
 
-# Prepare data – filter, compute time from start, sample up to 200 points per route
+# Prepare data: use absolute time if available, otherwise relative time (point_seconds),
+# or simply point index as a last resort.
 trellis_data <- gps_data %>%
-  filter(!is.na(altitude), !is.na(time), track_name %in% top_routes) %>%
+  filter(track_name %in% top_routes, !is.na(altitude)) %>%
   arrange(track_name, time) %>%
   group_by(track_name) %>%
   mutate(
-    time_minutes = as.numeric(difftime(time, min(time, na.rm = TRUE), units = "mins")),
-    total_points = n()
+    x_axis = case_when(
+      !is.na(time) ~ as.numeric(difftime(time, min(time, na.rm = TRUE), units = "mins")),
+      !is.na(point_seconds) ~ point_seconds / 60,   # point_seconds = seconds from start
+      TRUE ~ row_number()
+    ),
+    x_source = case_when(
+      !is.na(time) ~ "absolute time",
+      !is.na(point_seconds) ~ "relative time",
+      TRUE ~ "point index"
+    )
   ) %>%
-  slice_sample(n = pmin(200, total_points)) %>%  # take up to 200 points per route (all if fewer)
+  slice_sample(n = 200) %>%   # at most 200 points per route (all if fewer)
   ungroup()
 
-# Plot only if data exists
 if (nrow(trellis_data) > 0) {
-  ggplot(trellis_data, aes(x = time_minutes, y = altitude)) +
+  
+  # Determine a descriptive subtitle based on the actual time source
+  source_note <- if (all(trellis_data$x_source == "absolute time")) {
+    "based on absolute time"
+  } else if (any(trellis_data$x_source == "relative time")) {
+    "based on relative time (point_seconds)"
+  } else {
+    "based on point index (no time data available)"
+  }
+  
+  ggplot(trellis_data, aes(x = x_axis, y = altitude)) +
     geom_line(alpha = 0.6, color = "#2c3e50", linewidth = 0.5) +
     facet_wrap(~track_name, scales = "free_y", ncol = 2) +
     labs(
       title = "Altitude profiles by route",
-      subtitle = "Each panel shows a different route (top 10 by number of points)",
-      x = "Time from start (minutes)", y = "Altitude (m)"
+      subtitle = paste("Each panel shows a different route (top 10 by number of points) –", source_note),
+      x = if (grepl("absolute", source_note)) "Time from start (minutes)" else
+           if (grepl("relative", source_note)) "Relative time (minutes)" else "Point index",
+      y = "Altitude (m)"
     ) +
     theme_minimal(base_size = 14) +
     theme(
@@ -634,8 +681,9 @@ if (nrow(trellis_data) > 0) {
       panel.spacing = unit(1, "lines"),
       plot.margin = margin(10, 10, 10, 10)
     )
+  
 } else {
-  message("No data available for trellis plot – check if top_routes contains valid track names.")
+  message("No data available for trellis plot – check if top routes contain valid altitude or time information.")
 }
 ```
 
@@ -673,8 +721,8 @@ ggplot(strip_data, aes(x = track_name, y = calories)) +
 library(plotly)
 library(viridis)
 
-# Select specific route: 'slieve lieage 28/09/2025 13:16'
-selected_route <- "slieve lieage 28/09/2025 13:16"
+# Select specific route: 'from Enniskerry to Sandyford'
+selected_route <- "GPX Download: Scarr Mountain – Great Lake Views loop from Laragh"
 
 # Prepare data for this route (sorted by time)
 df_3d <- gps_data %>%
