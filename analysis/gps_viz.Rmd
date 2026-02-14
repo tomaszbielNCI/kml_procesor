@@ -1,0 +1,487 @@
+---
+title: "GPS Data Visualization Analysis"
+author: "GPS Analysis Team"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readr)
+library(lubridate)
+library(ggplot2)
+library(plotly)
+library(DT)
+library(knitr)
+library(kableExtra)
+
+# Settings
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 6)
+
+# Colors
+theme_set(theme_minimal() + 
+          theme(plot.title = element_text(size = 14, face = "bold"),
+                axis.title = element_text(size = 12),
+                legend.title = element_text(size = 11)))
+```
+
+# Data Loading
+
+```{r load-data}
+# Load master CSV
+gps_data <- read_csv("../data/output/gps_master.csv")
+
+# Convert dates - handle different time formats
+gps_data <- gps_data %>%
+  mutate(
+    # Handle time from GPX extensions (HH:MM:SS format)
+    point_clock_time = ifelse(point_clock != "no_time" & !is.na(point_clock), 
+                             paste(route_date, point_clock), NA),
+    
+    # Convert standard time
+    time_standard = ifelse(time != "no_time" & !grepl("^[0-9]{2}:[0-9]{2}:[0-9]{2}$", time), 
+                         time, NA),
+    
+    # Create one time column
+    time_clean = coalesce(time_standard, point_clock_time),
+    
+    # Convert to datetime
+    time = ymd_hms(time_clean),
+    
+    date = date(time),
+    hour = hour(time),
+    month = month(time, label = TRUE),
+    file_type = factor(file_type)
+  )
+
+# Basic statistics
+cat("Number of GPS points:", nrow(gps_data), "\n")
+cat("Number of unique routes:", n_distinct(gps_data$track_name), "\n")
+cat("Date range:", min(gps_data$date, na.rm = TRUE), "-", max(gps_data$date, na.rm = TRUE), "\n")
+cat("Points with time:", sum(!is.na(gps_data$time)), "\n")
+cat("Points with clock:", sum(!is.na(gps_data$point_clock)), "\n")
+```
+
+---
+
+## 1. Altitude Histogram
+
+```{r plot1}
+ggplot(gps_data, aes(x = altitude)) +
+  geom_histogram(bins = 50, fill = "skyblue", alpha = 0.7, color = "black") +
+  labs(title = "Distribution of GPS Point Altitudes",
+       x = "Altitude (m above sea level)", y = "Number of Points") +
+  geom_vline(aes(xintercept = mean(altitude, na.rm = TRUE)), 
+             color = "red", linetype = "dashed", size = 1)
+```
+
+---
+
+## 2. Altitude Boxplot by Routes
+
+```{r plot2}
+top_routes <- gps_data %>% 
+  count(track_name, sort = TRUE) %>% 
+  slice_head(n = 10) %>% 
+  pull(track_name)
+
+gps_data %>% 
+  filter(track_name %in% top_routes) %>%
+  ggplot(aes(x = reorder(track_name, altitude, median), y = altitude)) +
+  geom_boxplot(fill = "lightgreen", alpha = 0.7) +
+  coord_flip() +
+  labs(title = "Altitude Distribution for Top 10 Most Frequent Routes",
+       x = "Route", y = "Altitude (m above sea level)")
+```
+
+---
+
+## 3. Latitude Distribution
+
+```{r plot3}
+ggplot(gps_data, aes(x = latitude)) +
+  geom_density(fill = "orange", alpha = 0.6) +
+  labs(title = "Density Distribution of Latitude",
+       x = "Latitude", y = "Density")
+```
+
+---
+
+## 4. Longitude Distribution
+
+```{r plot4}
+ggplot(gps_data, aes(x = longitude)) +
+  geom_density(fill = "purple", alpha = 0.6) +
+  labs(title = "Density Distribution of Longitude",
+       x = "Longitude", y = "Density")
+```
+
+---
+
+## 5. Altitude vs Latitude
+
+```{r plot5}
+ggplot(gps_data, aes(x = latitude, y = altitude)) +
+  geom_point(alpha = 0.3, color = "blue") +
+  geom_smooth(method = "loess", color = "red", se = TRUE) +
+  labs(title = "Altitude vs Latitude Relationship",
+       x = "Latitude", y = "Altitude (m above sea level)")
+```
+
+---
+
+## 6. Altitude vs Longitude
+
+```{r plot6}
+ggplot(gps_data, aes(x = longitude, y = altitude)) +
+  geom_point(alpha = 0.3, color = "darkgreen") +
+  geom_smooth(method = "loess", color = "red", se = TRUE) +
+  labs(title = "Altitude vs Longitude Relationship",
+       x = "Longitude", y = "Altitude (m above sea level)")
+```
+
+---
+
+## 7. Time Distribution of Points (Hours)
+
+```{r plot7}
+gps_data %>%
+  filter(!is.na(hour)) %>%
+  ggplot(aes(x = hour)) +
+  geom_histogram(bins = 24, fill = "gold", alpha = 0.7, color = "black") +
+  labs(title = "Distribution of GPS Points by Hour of Day",
+       x = "Hour", y = "Number of Points") +
+  scale_x_continuous(breaks = seq(0, 24, 2))
+```
+
+---
+
+## 8. Points per Route
+
+```{r plot8}
+route_counts <- gps_data %>% 
+  count(track_name, sort = TRUE) %>% 
+  slice_head(n = 15)
+
+ggplot(route_counts, aes(x = reorder(track_name, n), y = n)) +
+  geom_col(fill = "coral", alpha = 0.8) +
+  coord_flip() +
+  labs(title = "GPS Points for 15 Longest Routes",
+       x = "Route", y = "Number of Points")
+```
+
+---
+
+## 9. Average Altitude per Route
+
+```{r plot9}
+route_elevation <- gps_data %>% 
+  group_by(track_name) %>% 
+  summarise(mean_elevation = mean(altitude, na.rm = TRUE),
+            .groups = 'drop') %>% 
+  arrange(desc(mean_elevation)) %>% 
+  slice_head(n = 15)
+
+ggplot(route_elevation, aes(x = reorder(track_name, mean_elevation), y = mean_elevation)) +
+  geom_col(fill = "brown", alpha = 0.8) +
+  coord_flip() +
+  labs(title = "Average Altitude for 15 Highest Routes",
+       x = "Route", y = "Average Altitude (m above sea level)")
+```
+
+---
+
+## 10. GPS Points Scatter Map
+
+```{r plot10}
+ggplot(gps_data, aes(x = longitude, y = latitude)) +
+  geom_point(alpha = 0.4, color = "navy", size = 0.5) +
+  labs(title = "GPS Points Scatter Map",
+       x = "Longitude", y = "Latitude") +
+  theme_minimal()
+```
+
+---
+
+## 11. Altitude vs Time (for time-series data)
+
+```{r plot11}
+gps_data %>%
+  filter(!is.na(time)) %>%
+  slice_sample(n = 5000) %>%  # Sampling for performance
+  ggplot(aes(x = time, y = altitude, color = track_name)) +
+  geom_line(alpha = 0.7) +
+  labs(title = "Altitude Changes Over Time",
+       x = "Time", y = "Altitude (m above sea level)") +
+  theme(legend.position = "none")
+```
+
+---
+
+## 12. Altitude Statistics by File Types
+
+```{r plot12}
+ggplot(gps_data, aes(x = file_type, y = altitude, fill = file_type)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Altitude Distribution by File Types",
+       x = "File Type", y = "Altitude (m above sea level)") +
+  scale_fill_brewer(palette = "Set1") +
+  theme(legend.position = "none")
+```
+
+---
+
+## 13. 2D Point Density (Contour)
+
+```{r plot13}
+ggplot(gps_data, aes(x = longitude, y = latitude)) +
+  geom_density_2d_filled(alpha = 0.8) +
+  labs(title = "GPS Points Density (2D Contour)",
+       x = "Longitude", y = "Latitude") +
+  theme_minimal()
+```
+
+---
+
+## 14. Geographic Range of Each Route
+
+```{r plot14}
+route_bounds <- gps_data %>%
+  group_by(track_name) %>%
+  summarise(
+    lat_range = max(latitude, na.rm = TRUE) - min(latitude, na.rm = TRUE),
+    lon_range = max(longitude, na.rm = TRUE) - min(longitude, na.rm = TRUE),
+    total_range = lat_range + lon_range,
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(total_range)) %>%
+  slice_head(n = 15)
+
+ggplot(route_bounds, aes(x = reorder(track_name, total_range), y = total_range)) +
+  geom_col(fill = "darkblue", alpha = 0.8) +
+  coord_flip() +
+  labs(title = "Geographic Range of 15 Largest Routes",
+       x = "Route", y = "Geographic Range (degrees)")
+```
+
+---
+
+## 15. Correlation Between Coordinates
+
+```{r plot15}
+gps_data %>%
+  sample_n(10000) %>%  # Sampling
+  ggplot(aes(x = latitude, y = longitude)) +
+  geom_point(alpha = 0.3, color = "red") +
+  geom_smooth(method = "lm", color = "blue", se = TRUE) +
+  labs(title = "Correlation Between Latitude and Longitude",
+       x = "Latitude", y = "Longitude")
+```
+
+---
+
+## 16. Altitude Distribution with Quartiles
+
+```{r plot16}
+ggplot(gps_data, aes(x = altitude)) +
+  geom_histogram(bins = 50, fill = "lightblue", alpha = 0.7) +
+  geom_vline(aes(xintercept = quantile(altitude, 0.25, na.rm = TRUE)), 
+             color = "orange", linetype = "dashed", size = 1) +
+  geom_vline(aes(xintercept = quantile(altitude, 0.5, na.rm = TRUE)), 
+             color = "red", linetype = "dashed", size = 1) +
+  geom_vline(aes(xintercept = quantile(altitude, 0.75, na.rm = TRUE)), 
+             color = "purple", linetype = "dashed", size = 1) +
+  labs(title = "Altitude Distribution with Quartile Markers",
+       x = "Altitude (m above sea level)", y = "Number of Points") +
+  annotate("text", x = Inf, y = Inf, 
+           label = "Q1 | Q2 | Q3", 
+           hjust = 1.1, vjust = 1.1,
+           color = c("orange", "red", "purple"))
+```
+
+---
+
+## 17. Route Statistics Summary Table
+
+```{r plot17}
+route_stats <- gps_data %>%
+  group_by(track_name) %>%
+  summarise(
+    points = n(),
+    avg_altitude = round(mean(altitude, na.rm = TRUE), 1),
+    min_altitude = round(min(altitude, na.rm = TRUE), 1),
+    max_altitude = round(max(altitude, na.rm = TRUE), 1),
+    altitude_range = round(max_altitude - min_altitude, 1),
+    calories = round(mean(route_total_calories, na.rm = TRUE), 0),
+    distance_km = round(mean(route_distance_km, na.rm = TRUE), 2),
+    file_type = first(file_type),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(points)) %>%
+  slice_head(n = 20)
+
+DT::datatable(route_stats, 
+              options = list(pageLength = 10, scrollX = TRUE),
+              caption = "Statistics for 20 Largest Routes")
+```
+
+---
+
+## 18. Time Analysis from GPX Extensions
+
+```{r plot18}
+# Data with clock time
+time_analysis <- gps_data %>%
+  filter(!is.na(point_clock)) %>%
+  mutate(
+    time_seconds = as.numeric(point_seconds),
+    time_minutes = time_seconds / 60
+  )
+
+ggplot(time_analysis, aes(x = time_minutes)) +
+  geom_histogram(bins = 50, fill = "lightgreen", alpha = 0.7) +
+  labs(title = "Distribution of Route Time (minutes from start)",
+       x = "Time (minutes)", y = "Number of Points") +
+  geom_vline(aes(xintercept = mean(time_minutes, na.rm = TRUE)), 
+             color = "red", linetype = "dashed", size = 1)
+```
+
+---
+
+## 19. Calories vs Distance
+
+```{r plot19}
+gps_data %>%
+  filter(!is.na(route_total_calories) & !is.na(route_distance_km)) %>%
+  ggplot(aes(x = route_distance_km, y = route_total_calories)) +
+  geom_point(alpha = 0.6, color = "darkred") +
+  geom_smooth(method = "lm", color = "blue", se = TRUE) +
+  labs(title = "Calories vs Distance Relationship",
+       x = "Distance (km)", y = "Calories") +
+  annotate("text", x = Inf, y = -Inf, 
+           label = paste("Correlation:", round(cor(route_distance_km, route_total_calories, use = "complete.obs"), 2)),
+           hjust = 1.1, vjust = -0.5)
+```
+
+---
+
+## 20. Valleymount to Blessington - Time vs Speed Analysis (Anscombe's Quartet)
+
+```{r plot20}
+# Filter Valleymount to Blessington route
+valleymount_route <- gps_data %>%
+  filter(track_name == "valleymount to blessington  12/10/2025 09:22") %>%
+  filter(!is.na(point_seconds)) %>%
+  mutate(
+    time_minutes = as.numeric(point_seconds) / 60,
+    # Calculate speed from position changes
+    lat_diff = latitude - lag(latitude),
+    lon_diff = longitude - lag(longitude),
+    time_diff = as.numeric(point_seconds) - lag(as.numeric(point_seconds)),
+    distance_km = sqrt(lat_diff^2 + lon_diff^2) * 111,  # Approximate km per degree
+    speed_kmh = ifelse(time_diff > 0, (distance_km / time_diff) * 3600, 0),
+    speed_kmh = ifelse(speed_kmh > 150, NA, speed_kmh)  # Remove unrealistic speeds
+  ) %>%
+  filter(!is.na(speed_kmh))
+
+# Time vs Speed scatter plot with regression line
+ggplot(valleymount_route, aes(x = time_minutes, y = speed_kmh)) +
+  geom_point(alpha = 0.6, color = "orange") +
+  geom_smooth(method = "lm", color = "red", se = TRUE, linewidth = 1) +
+  labs(title = "Valleymount to Blessington - Time vs Speed Analysis",
+       subtitle = "Showing transition from walking to car journey",
+       x = "Time (minutes)", y = "Speed (km/h)") +
+  theme_minimal() +
+  annotate("text", x = Inf, y = Inf, 
+           label = paste("R² =", round(summary(lm(speed_kmh ~ time_minutes, data = valleymount_route))$r.squared, 3)),
+           hjust = 1.1, vjust = 1.1, color = "red")
+```
+
+---
+
+## 21. Valleymount to Blessington - Speed Phases Analysis
+
+```{r plot21}
+# Identify walking vs car phases (75% walking, 25% car)
+walking_phase <- valleymount_route %>% head(round(nrow(valleymount_route) * 0.75))
+car_phase <- valleymount_route %>% tail(round(nrow(valleymount_route) * 0.25))
+
+# Combine with phase labels
+speed_analysis <- bind_rows(
+  walking_phase %>% mutate(phase = "Walking"),
+  car_phase %>% mutate(phase = "Car")
+)
+
+# Box plot comparison
+ggplot(speed_analysis, aes(x = phase, y = speed_kmh, fill = phase)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.2, alpha = 0.3) +
+  labs(title = "Speed Comparison: Walking vs Car Phases",
+       subtitle = "Valleymount to Blessington Route",
+       x = "Journey Phase", y = "Speed (km/h)") +
+  scale_fill_manual(values = c("Walking" = "lightblue", "Car" = "lightcoral")) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+---
+
+## 22. Valleymount to Blessington - Speed Timeline with Transition
+
+```{r plot22}
+# Create speed timeline with transition point
+transition_time <- max(walking_phase$time_minutes)
+
+ggplot(valleymount_route, aes(x = time_minutes, y = speed_kmh)) +
+  geom_line(alpha = 0.7, color = "steelblue") +
+  geom_point(alpha = 0.5, color = "steelblue") +
+  geom_vline(xintercept = transition_time, color = "red", linetype = "dashed", linewidth = 1.5) +
+  annotate("text", x = transition_time, y = max(valleymount_route$speed_kmh, na.rm = TRUE) * 0.9,
+           label = "Transition to Car", angle = 90, vjust = -0.5, color = "red") +
+  labs(title = "Speed Timeline - Valleymount to Blessington Route",
+       subtitle = "Clear transition point where walking changes to car journey",
+       x = "Time (minutes)", y = "Speed (km/h)") +
+  theme_minimal()
+```
+
+---
+
+# Summary
+
+```{r summary}
+cat("=== GPS DATA SUMMARY ===\n\n")
+cat("Total number of points:", nrow(gps_data), "\n")
+cat("Number of unique routes:", n_distinct(gps_data$track_name), "\n")
+cat("Number of GPX files:", sum(gps_data$file_type == "gpx"), "\n")
+cat("Number of KML files:", sum(gps_data$file_type == "kml"), "\n")
+cat("Points with time:", sum(!is.na(gps_data$time)), "\n")
+cat("Points with clock:", sum(!is.na(gps_data$point_clock)), "\n")
+cat("Altitude range:", round(min(gps_data$altitude, na.rm = TRUE), 1), "-", 
+    round(max(gps_data$altitude, na.rm = TRUE), 1), "m above sea level\n")
+cat("Average altitude:", round(mean(gps_data$altitude, na.rm = TRUE), 1), "m above sea level\n")
+cat("Latitude range:", round(min(gps_data$latitude, na.rm = TRUE), 4), "-", 
+    round(max(gps_data$latitude, na.rm = TRUE), 4), "\n")
+cat("Longitude range:", round(min(gps_data$longitude, na.rm = TRUE), 4), "-", 
+    round(max(gps_data$longitude, na.rm = TRUE), 4), "\n")
+
+if(sum(!is.na(gps_data$route_total_calories)) > 0) {
+  cat("Calories range:", round(min(gps_data$route_total_calories, na.rm = TRUE)), "-", 
+      round(max(gps_data$route_total_calories, na.rm = TRUE)), "kcal\n")
+  cat("Average calories:", round(mean(gps_data$route_total_calories, na.rm = TRUE)), "kcal\n")
+}
+
+if(sum(!is.na(gps_data$route_distance_km)) > 0) {
+  cat("Distance range:", round(min(gps_data$route_distance_km, na.rm = TRUE), 2), "-", 
+      round(max(gps_data$route_distance_km, na.rm = TRUE), 2), "km\n")
+  cat("Average distance:", round(mean(gps_data$route_distance_km, na.rm = TRUE), 2), "km\n")
+}
+```
+
+---
+
+*Generated on `r Sys.Date()` using R Markdown and ggplot2*

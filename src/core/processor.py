@@ -1,38 +1,49 @@
-# src/core/processor.py
-import pandas as pd
-import glob
 import os
-from geopy.distance import geodesic
-from .converter import kml_to_df, gpx_to_df
-from .analyzer import RouteAnalyzer
+import pandas as pd
+from .converter import gpx_to_df, kml_to_df
+
 
 class RouteProcessor:
-    def __init__(self, input_dir='data/input', output_dir='data/output'):
+    """Processor for handling GPX/KML route files and merging them into a single DataFrame"""
+    
+    def __init__(self, input_dir, output_dir):
         self.input_dir = input_dir
         self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
-
-    def merge_files(self, file_type='kml'):
-        """Łączenie plików określonego typu"""
-        all_files = glob.glob(os.path.join(self.input_dir, f'*.{file_type}'))
-        dfs = [kml_to_df(f) if file_type == 'kml' else gpx_to_df(f)
-              for f in all_files]
-        return pd.concat(dfs, ignore_index=True)
-
-    def clean_data(self, df, tolerance=0.0001):
-        """Czyszczenie danych"""
-        df = df.sort_values(['latitude', 'longitude'])
-        df['lat_rounded'] = (df['latitude'] / tolerance).round() * tolerance
-        df['lon_rounded'] = (df['longitude'] / tolerance).round() * tolerance
-        return df.drop_duplicates(subset=['lat_rounded', 'lon_rounded']).drop(
-            columns=['lat_rounded', 'lon_rounded'])
-
-    def calculate_metrics(self, df):
-        """Obliczanie metryk trasy"""
-        return RouteAnalyzer.calculate_basic_stats(df)
-
-    def save_output(self, df, filename):
-        """Zapis wyników"""
-        output_path = os.path.join(self.output_dir, filename)
-        df.to_csv(output_path, index=False)
-        print(f"Zapisano plik: {output_path}")
+    
+    def merge_files(self):
+        """Merge all GPX and KML files from input directory into a single DataFrame"""
+        all_data = []
+        
+        if not os.path.exists(self.input_dir):
+            raise FileNotFoundError(f"Input directory does not exist: {self.input_dir}")
+        
+        # Process all files in input directory
+        for filename in os.listdir(self.input_dir):
+            file_path = os.path.join(self.input_dir, filename)
+            
+            if filename.lower().endswith('.gpx'):
+                try:
+                    df = gpx_to_df(file_path)
+                    all_data.append(df)
+                except Exception as e:
+                    print(f"Error processing GPX file {filename}: {e}")
+            
+            elif filename.lower().endswith('.kml'):
+                try:
+                    df = kml_to_df(file_path)
+                    all_data.append(df)
+                except Exception as e:
+                    print(f"Error processing KML file {filename}: {e}")
+        
+        if not all_data:
+            raise ValueError("No valid GPX or KML files found in input directory")
+        
+        # Combine all DataFrames
+        merged_df = pd.concat(all_data, ignore_index=True)
+        
+        # Sort by time if available, otherwise by original order
+        if 'time' in merged_df.columns and merged_df['time'].notna().any():
+            merged_df['time'] = pd.to_datetime(merged_df['time'])
+            merged_df = merged_df.sort_values('time')
+        
+        return merged_df
