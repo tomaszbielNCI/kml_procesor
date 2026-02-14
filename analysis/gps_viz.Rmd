@@ -33,8 +33,8 @@ theme_set(theme_minimal() +
 # Data Loading
 
 ```{r load-data}
-# Load master CSV
-gps_data <- read_csv("../data/output/gps_master.csv")
+# Load master CSV from GitHub raw URL
+gps_data <- read_csv("https://raw.githubusercontent.com/tomaszbielNCI/kml_procesor/master/data/output/gps_master.csv")
 
 # Convert dates - handle different time formats
 gps_data <- gps_data %>%
