@@ -481,6 +481,142 @@ ggplot(valleymount_route, aes(x = time_minutes, y = speed_kmh)) +
 
 ---
 
+## 23. Violin Plot of Speed by Route Type
+
+```{r plot23}
+# Categorize routes by type (hiking vs transport)
+route_categories <- gps_data %>%
+  filter(!is.na(speed_kmh)) %>%
+  mutate(
+    route_type = case_when(
+      grepl("walk|hiking|mountain", track_name, ignore.case = TRUE) ~ "Hiking",
+      grepl("car|drive|blessington", track_name, ignore.case = TRUE) ~ "Transport",
+      TRUE ~ "Other"
+    )
+  )
+
+ggplot(route_categories, aes(x = route_type, y = speed_kmh, fill = route_type)) +
+  geom_violin(alpha = 0.7) +
+  geom_boxplot(width = 0.1, alpha = 0.8, color = "black") +
+  labs(title = "Speed Distribution by Route Type",
+       x = "Route Type", y = "Speed (km/h)") +
+  scale_fill_manual(values = c("Hiking" = "lightgreen", "Transport" = "lightcoral", "Other" = "lightblue")) +
+  theme_minimal()
+```
+
+---
+
+## 24. Bubble Plot - Distance vs Points vs Calories
+
+```{r plot24}
+# Create bubble plot data
+bubble_data <- gps_data %>%
+  group_by(track_name) %>%
+  summarise(
+    distance = mean(route_distance_km, na.rm = TRUE),
+    points = n(),
+    calories = mean(route_total_calories, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  filter(!is.na(distance) & !is.na(calories))
+
+ggplot(bubble_data, aes(x = distance, y = points, size = calories, color = calories)) +
+  geom_point(alpha = 0.7) +
+  scale_size_continuous(range = c(3, 15), name = "Calories") +
+  scale_color_gradient(low = "lightblue", high = "darkred", name = "Calories") +
+  labs(title = "Bubble Plot: Distance vs Points vs Calories",
+       x = "Distance (km)", y = "Number of Points") +
+  theme_minimal()
+```
+
+---
+
+## 25. Stacked Bar Chart - File Types by Route
+
+```{r plot25}
+# Create stacked data
+stacked_data <- gps_data %>%
+  count(track_name, file_type) %>%
+  group_by(file_type) %>%
+  slice_max(n = 10) %>%
+  ungroup() %>%
+  mutate(track_name = factor(track_name, levels = unique(track_name)))
+
+ggplot(stacked_data, aes(x = track_name, y = n, fill = file_type)) +
+  geom_col(position = "fill") +
+  coord_flip() +
+  labs(title = "Stacked Bar Chart: File Types by Route (Top 10)",
+       x = "Route", y = "Number of Points", fill = "File Type") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+---
+
+## 26. Heat Map - Activity by Hour and Day
+
+```{r plot26}
+# Create heat map data
+heat_data <- gps_data %>%
+  filter(!is.na(hour) & !is.na(date)) %>%
+  mutate(day = wday(date, label = TRUE, week_start = 1)) %>%
+  count(day, hour) %>%
+  complete(day, hour, fill = 0)
+
+ggplot(heat_data, aes(x = hour, y = day, fill = n)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "darkred", name = "Points") +
+  labs(title = "Heat Map: GPS Activity by Hour and Day",
+       x = "Hour of Day", y = "Day of Week") +
+  theme_minimal()
+```
+
+---
+
+## 27. Trellis Plot - Altitude by Route
+
+```{r plot27}
+# Create trellis (facet) plot
+trellis_data <- gps_data %>%
+  filter(track_name %in% top_routes) %>%
+  sample_n(1000)  # Sample for clarity
+
+ggplot(trellis_data, aes(x = time_minutes, y = altitude)) +
+  geom_line(alpha = 0.7) +
+  geom_smooth(method = "loess", se = FALSE, color = "red") +
+  facet_wrap(~track_name, scales = "free_y") +
+  labs(title = "Trellis Plot: Altitude Profiles by Route",
+       x = "Time (minutes)", y = "Altitude (m)") +
+  theme_minimal()
+```
+
+---
+
+## 28. Strip Chart with Means
+
+```{r plot28}
+# Strip chart with means
+strip_data <- gps_data %>%
+  filter(!is.na(route_total_calories)) %>%
+  group_by(track_name) %>%
+  summarise(
+    calories = mean(route_total_calories, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(calories)) %>%
+  head(15)
+
+ggplot(strip_data, aes(x = track_name, y = calories)) +
+  geom_jitter(width = 0.2, alpha = 0.6, color = "darkblue") +
+  stat_summary(fun = mean, geom = "point", shape = 23, size = 4, color = "red") +
+  coord_flip() +
+  labs(title = "Strip Chart with Means: Average Calories by Route",
+       x = "Route", y = "Average Calories") +
+  theme_minimal()
+```
+
+---
+
 # Summary
 
 ```{r summary}
