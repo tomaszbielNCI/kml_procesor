@@ -95,7 +95,7 @@ gps_data %>%
   ggplot(aes(x = reorder(track_name, altitude, median), y = altitude)) +
   geom_boxplot(fill = "lightgreen", alpha = 0.7) +
   coord_flip() +
-  labs(title = "Altitude Distribution for Top 10 Most Frequent Routes",
+  labs(title = "Altitude Distribution for Top 10 Routes",
        x = "Route", y = "Altitude (m above sea level)")
 ```
 
@@ -135,14 +135,29 @@ ggplot(gps_data, aes(x = latitude, y = altitude)) +
 
 ---
 
-## 6. Altitude vs Longitude
+## 6. Speed Distribution
 
 ```{r plot6}
-ggplot(gps_data, aes(x = longitude, y = altitude)) +
-  geom_point(alpha = 0.3, color = "darkgreen") +
-  geom_smooth(method = "loess", color = "red", se = TRUE) +
-  labs(title = "Altitude vs Longitude Relationship",
-       x = "Longitude", y = "Altitude (m above sea level)")
+# Calculate speed from position changes for all data
+speed_data <- gps_data %>%
+  arrange(track_name, time) %>%
+  group_by(track_name) %>%
+  mutate(
+    lat_diff = latitude - lag(latitude),
+    lon_diff = longitude - lag(longitude),
+    time_diff = as.numeric(difftime(time, lag(time), units = "secs")),
+    distance_km = sqrt(lat_diff^2 + lon_diff^2) * 111,
+    speed_kmh = ifelse(time_diff > 0, (distance_km / time_diff) * 3600, NA)
+  ) %>%
+  filter(!is.na(speed_kmh) & speed_kmh < 150) %>%
+  ungroup()
+
+ggplot(speed_data, aes(x = speed_kmh)) +
+  geom_histogram(bins = 50, fill = "darkgreen", alpha = 0.7) +
+  labs(title = "Speed Distribution Across All Routes",
+       x = "Speed (km/h)", y = "Number of Points") +
+  geom_vline(aes(xintercept = mean(speed_kmh, na.rm = TRUE)), 
+             color = "red", linetype = "dashed", size = 1)
 ```
 
 ---
@@ -356,16 +371,31 @@ ggplot(time_analysis, aes(x = time_minutes)) +
 ## 19. Calories vs Distance
 
 ```{r plot19}
-gps_data %>%
-  filter(!is.na(route_total_calories) & !is.na(route_distance_km)) %>%
-  ggplot(aes(x = route_distance_km, y = route_total_calories)) +
-  geom_point(alpha = 0.6, color = "darkred") +
-  geom_smooth(method = "lm", color = "blue", se = TRUE) +
-  labs(title = "Calories vs Distance Relationship",
-       x = "Distance (km)", y = "Calories") +
-  annotate("text", x = Inf, y = -Inf, 
-           label = paste("Correlation:", round(cor(route_distance_km, route_total_calories, use = "complete.obs"), 2)),
-           hjust = 1.1, vjust = -0.5)
+# Force convert columns to numeric and remove NAs
+route_total_calories <- as.numeric(gps_data$route_total_calories)
+route_distance_km <- as.numeric(gps_data$route_distance_km)
+
+# Create data frame for plotting
+calories_distance_data <- data.frame(
+  calories = route_total_calories[!is.na(route_total_calories) & !is.na(route_distance_km) & route_total_calories > 0],
+  distance = route_distance_km[!is.na(route_total_calories) & !is.na(route_distance_km) & route_distance_km > 0]
+)
+
+# Check data
+cat("Valid data points:", nrow(calories_distance_data), "\n")
+
+if(nrow(calories_distance_data) > 0) {
+  ggplot(calories_distance_data, aes(x = distance, y = calories)) +
+    geom_point(alpha = 0.6, color = "darkred") +
+    geom_smooth(method = "lm", color = "blue", se = TRUE) +
+    labs(title = "Calories vs Distance Relationship",
+         x = "Distance (km)", y = "Calories") +
+    annotate("text", x = Inf, y = -Inf, 
+             label = paste("Correlation:", round(cor(distance, calories, use = "complete.obs"), 2)),
+             hjust = 1.1, vjust = -0.5)
+} else {
+  cat("No valid data for plotting")
+}
 ```
 
 ---
