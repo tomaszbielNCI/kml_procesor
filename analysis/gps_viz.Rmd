@@ -607,9 +607,10 @@ trellis_data <- gps_data %>%
   arrange(track_name, time) %>%
   group_by(track_name) %>%
   mutate(
-    time_minutes = as.numeric(difftime(time, min(time, na.rm = TRUE), units = "mins"))
+    time_minutes = as.numeric(difftime(time, min(time, na.rm = TRUE), units = "mins")),
+    total_points = n()
   ) %>%
-  slice_sample(n = min(200, n())) %>%  # take up to 200 points per route (all if fewer)
+  slice_sample(n = pmin(200, total_points)) %>%  # take up to 200 points per route (all if fewer)
   ungroup()
 
 # Plot only if data exists
@@ -661,6 +662,98 @@ ggplot(strip_data, aes(x = track_name, y = calories)) +
   labs(title = "Strip Chart with Means: Average Calories by Route",
        x = "Route", y = "Average Calories") +
   theme_minimal()
+```
+
+---
+
+## 29. 3D Visualization of Selected Route (Cedric Scherer Style)
+
+```{r plot29}
+# Load required libraries for 3D visualization
+library(plotly)
+library(viridis)
+
+# Select specific route: 'slieve lieage 28/09/2025 13:16'
+selected_route <- "slieve lieage 28/09/2025 13:16"
+
+# Prepare data for this route (sorted by time)
+df_3d <- gps_data %>%
+  filter(track_name == selected_route, !is.na(time), !is.na(altitude)) %>%
+  arrange(time) %>%
+  mutate(
+    time_min = as.numeric(difftime(time, min(time), units = "mins")),
+    # Calculate speed if not available
+    lat_diff = latitude - lag(latitude),
+    lon_diff = longitude - lag(longitude),
+    time_diff = as.numeric(difftime(time, lag(time), units = "secs")),
+    dist_km = sqrt(lat_diff^2 + lon_diff^2) * 111,  # approximation
+    speed_kmh = ifelse(time_diff > 0, (dist_km / time_diff) * 3600, NA)
+  ) %>%
+  filter(!is.na(speed_kmh), speed_kmh < 150)  # filter out erroneous values
+
+# Choose variable for coloring (speed or altitude)
+color_var <- df_3d$speed_kmh
+color_title <- "Speed (km/h)"
+
+# Create 3D plot (line + points)
+plot_ly(df_3d,
+        x = ~longitude,
+        y = ~latitude,
+        z = ~altitude,
+        type = 'scatter3d',
+        mode = 'lines+markers',
+        line = list(
+          width = 6,
+          color = ~color_var,
+          colorscale = 'Viridis',
+          showscale = TRUE,
+          reversescale = FALSE
+        ),
+        marker = list(
+          size = 2,
+          color = ~color_var,
+          colorscale = 'Viridis',
+          showscale = FALSE
+        ),
+        text = ~paste(
+          "Time:", round(time_min, 1), "min<br>",
+          "Speed:", round(speed_kmh, 1), "km/h<br>",
+          "Altitude:", round(altitude, 0), "m"
+        ),
+        hoverinfo = 'text'
+        ) %>%
+  layout(
+    title = list(
+      text = paste("3D Route Profile:<br>", selected_route),
+      font = list(size = 16, family = "Arial, sans-serif")
+    ),
+    scene = list(
+      xaxis = list(
+        title = "Longitude",
+        backgroundcolor = "white",
+        gridcolor = "lightgray",
+        showbackground = TRUE
+      ),
+      yaxis = list(
+        title = "Latitude",
+        backgroundcolor = "white",
+        gridcolor = "lightgray",
+        showbackground = TRUE
+      ),
+      zaxis = list(
+        title = "Altitude (m)",
+        backgroundcolor = "white",
+        gridcolor = "lightgray",
+        showbackground = TRUE
+      ),
+      camera = list(
+        eye = list(x = 1.8, y = 1.8, z = 1.2)  # adjust perspective
+      )
+    ),
+    margin = list(l = 0, r = 0, b = 0, t = 60),
+    coloraxis = list(colorbar = list(title = color_title))
+  ) %>%
+  colorbar(title = color_title, len = 0.8)
 ```
 
 ---
