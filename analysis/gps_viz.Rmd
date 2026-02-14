@@ -484,9 +484,22 @@ ggplot(valleymount_route, aes(x = time_minutes, y = speed_kmh)) +
 ## 23. Violin Plot of Speed by Route Type
 
 ```{r plot23}
+# Calculate speed for all data first
+gps_data_with_speed <- gps_data %>%
+  arrange(track_name, time) %>%
+  group_by(track_name) %>%
+  mutate(
+    lat_diff = latitude - lag(latitude),
+    lon_diff = longitude - lag(longitude),
+    time_diff = as.numeric(difftime(time, lag(time), units = "secs")),
+    distance_km = sqrt(lat_diff^2 + lon_diff^2) * 111,
+    speed_kmh = ifelse(time_diff > 0, (distance_km / time_diff) * 3600, NA)
+  ) %>%
+  filter(!is.na(speed_kmh) & speed_kmh < 150) %>%
+  ungroup()
+
 # Categorize routes by type (hiking vs transport)
-route_categories <- gps_data %>%
-  filter(!is.na(speed_kmh)) %>%
+route_categories <- gps_data_with_speed %>%
   mutate(
     route_type = case_when(
       grepl("walk|hiking|mountain", track_name, ignore.case = TRUE) ~ "Hiking",
@@ -509,7 +522,7 @@ ggplot(route_categories, aes(x = route_type, y = speed_kmh, fill = route_type)) 
 ## 24. Bubble Plot - Distance vs Points vs Calories
 
 ```{r plot24}
-# Create bubble plot data
+# Create bubble plot data with proper calculations
 bubble_data <- gps_data %>%
   group_by(track_name) %>%
   summarise(
@@ -576,8 +589,16 @@ ggplot(heat_data, aes(x = hour, y = day, fill = n)) +
 ## 27. Trellis Plot - Altitude by Route
 
 ```{r plot27}
-# Create trellis (facet) plot
+# Create trellis (facet) plot with proper data
 trellis_data <- gps_data %>%
+  filter(!is.na(altitude)) %>%
+  arrange(track_name, time) %>%
+  group_by(track_name) %>%
+  mutate(
+    point_index = row_number(),
+    time_minutes = as.numeric(difftime(time, min(time, na.rm = TRUE), units = "mins"))
+  ) %>%
+  ungroup() %>%
   filter(track_name %in% top_routes) %>%
   sample_n(1000)  # Sample for clarity
 
